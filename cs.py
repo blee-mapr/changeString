@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import os
 import sys
 import re
@@ -9,11 +11,11 @@ from tqdm import tqdm
 
 logging.basicConfig(filename='changeString.log', level=logging.INFO)
 
-IGNORE_DIRS = ['.hg', '.gitignore']
+IGNORE_DIRS = ['.hg', '.git']
 # PATTERN = '1.0.3-mapr-5.1.0-SNAPSHOT'
 # REPLACE = '1.0.3-mapr-5.2.0-SNAPSHOT'
-PATTERN = 'MAPR_JAR_VERSION_NEW'
-REPLACE = 'MAPR_JAR_VERSION_NEW_NEW'
+PATTERN = '<version>1.6.1</version>'
+REPLACE = '<version>1.6.1-mapr-1604</version>'
 
 
 class replaceWorker(Thread):
@@ -51,7 +53,7 @@ def walkDirectories(rootDir):
 
 	# Create queue and worker threads
 	queue = Queue.Queue()
-	for x in range(4):
+	for x in range(1):
 		worker = replaceWorker(queue)
 		worker.daemon = True
 		worker.start()
@@ -60,9 +62,9 @@ def walkDirectories(rootDir):
 		for ignoreDir in IGNORE_DIRS:
 			if ignoreDir in subFolders:
 				subFolders.remove(ignoreDir)
-		# pbar = tqdm(files, desc='Processing %s' % root, disable=False)
+		pbar = tqdm(files, desc='Processing %s' % root, disable=True)
 		for fileName in files:
-			# pbar.update(1)
+			pbar.update(1)
 			queue.put((os.path.join(root, fileName), PATTERN, REPLACE))
 			# subsMade = doReplace(os.path.join(root, fileName), PATTERN, REPLACE)
 			# if subsMade > 0:
@@ -72,7 +74,17 @@ def walkDirectories(rootDir):
 			queue.join()
 	return filesChanged, totalLinesChanged
 
-numFilesChanged, numTotalLinesChanged = walkDirectories(os.getcwd())
-print 'Total files changed: %s' % numFilesChanged
-print 'Total lines changed: %s' % numTotalLinesChanged
 
+def main():
+	print 'Performing search in %s' % os.getcwd()
+	if len(sys.argv) <= 1:
+		print 'Need an argument'
+		sys.exit(0)
+
+	numFilesChanged, numTotalLinesChanged = walkDirectories(os.getcwd())
+	print 'Total files changed: %s' % numFilesChanged
+	print 'Total lines changed: %s' % numTotalLinesChanged
+
+
+if __name__ == "__main__":
+    main()
