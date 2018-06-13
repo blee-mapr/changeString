@@ -6,16 +6,11 @@ import re
 import Queue
 from threading import Thread
 import logging
+import xmltodict
 from tqdm import tqdm
 
-
 logging.basicConfig(filename='changeString.log', level=logging.INFO)
-
 IGNORE_DIRS = ['.hg', '.git']
-# PATTERN = '1.0.3-mapr-5.1.0-SNAPSHOT'
-# REPLACE = '1.0.3-mapr-5.2.0-SNAPSHOT'
-PATTERN = '<version>1.6.1</version>'
-REPLACE = '<version>1.6.1-mapr-1604</version>'
 
 
 class replaceWorker(Thread):
@@ -59,32 +54,89 @@ def walkDirectories(rootDir):
 		worker.start()
 
 	for root, subFolders, files in os.walk(rootDir):
+		pbar = tqdm(files, desc='Processing %s' % root, disable=True)
 		for ignoreDir in IGNORE_DIRS:
 			if ignoreDir in subFolders:
 				subFolders.remove(ignoreDir)
-		pbar = tqdm(files, desc='Processing %s' % root, disable=True)
 		for fileName in files:
 			pbar.update(1)
-			queue.put((os.path.join(root, fileName), PATTERN, REPLACE))
+			if fileName.endswith('xml'):
+				print('Processing %s' % fileName)
+				queue.put((os.path.join(root, fileName), PATTERN, REPLACE))
+			else:
+				continue
 			# subsMade = doReplace(os.path.join(root, fileName), PATTERN, REPLACE)
 			# if subsMade > 0:
 			# 	filesChanged += 1
 			# 	totalLinesChanged += subsMade
 
-			queue.join()
+		queue.join()
 	return filesChanged, totalLinesChanged
 
 
+def getNewVersionString(version, ecoNumber):
+	newVersionString = ''
+	tokens = version.split('-')
+	if 'SNAPSHOT' in tokens[-1]:
+		tokens[-1] = ecoNumber
+		newVersionString = '-'.join(tokens)
+	elif len(tokens) == 1:
+		newVersionString = tokens[0] + '-mapr-%s' % ecoNumber
+	elif (len(tokens) == 2) & ('mapr' in tokens[1]):
+		tokens.append(ecoNumber)
+		newVersionString = '-'.join(tokens)
+
+	return newVersionString
+
+
+def readPom():
+	try:
+		os.chdir(os.getcwd())
+		with open('pom.xml', 'r') as fh:
+			pomData = fh.read()
+		result = xmltodict.parse(pomData)
+		version = result['project']['version']
+		return version
+	except Exception, e:
+		print e
+		print 'Cannot find pom.xml'
+		return False
+	return True
+
+
 def main():
+	global PATTERN, REPLACE
+	if len(sys.argv) == 1:
+		print 'No arguments'
+	elif len(sys.argv) > 1:
+		PATTERN = sys.argv[1]
+		REPLACE = sys.argv[2]
+
 	print 'Performing search in %s' % os.getcwd()
 	if len(sys.argv) <= 1:
-		print 'Need an argument'
-		sys.exit(0)
+		try:
+			version = readPom()
+			if version is False:
+				return 1
+		except Exception, e:
+			print e
+			return 1
+		print 'Current version is %s' % version
+		newVersion = getNewVersionString(version, '1710')
+		print 'New version can be %s' % newVersion
+		userInput = raw_input('Continue (y/n)?')
+		if userInput[0].lower() == 'n':
+			sys.exit(0)
+		else:
+			PATTERN = version
+			REPLACE = newVersion
+			print 'go!'
 
+	print 'Replacing all instances of %s with %s' % (PATTERN, REPLACE)
 	numFilesChanged, numTotalLinesChanged = walkDirectories(os.getcwd())
-	print 'Total files changed: %s' % numFilesChanged
-	print 'Total lines changed: %s' % numTotalLinesChanged
+	# print 'Total files changed: %s' % numFilesChanged
+	# print 'Total lines changed: %s' % numTotalLinesChanged
 
 
 if __name__ == "__main__":
-    main()
+	main()
